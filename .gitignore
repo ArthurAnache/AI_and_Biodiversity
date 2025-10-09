@@ -176,6 +176,7 @@ cython_debug/
 
 
 raw_data/
+.venv/
 
 
 .DS_Store
