@@ -151,4 +151,4 @@ imp_dict = booster.get_score(importance_type=importance_type)
 feat_names = list(X_train.columns)
 imp_series = pd.Series({f: imp_dict.get(f, 0.0) for f in feat_names}).sort_values(ascending=False)
 
-print(f"\nTop 15 features ({importance_type}):\n", imp_series.head(15))
+print(f"\nTop 20 features ({importance_type}):\n", imp_series.head(20))
