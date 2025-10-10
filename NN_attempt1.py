@@ -120,24 +120,50 @@ X_train, X_valid = X[is_train], X[~is_train]
 y_train, y_valid = y[is_train], y[~is_train]
 meta_valid = meta[~is_train].copy()
 
-# ---------- Scale numeric features (not one-hot) ----------
-# Detect one-hot columns for species
+# ---------- Clean, impute, and scale numeric features (not one-hot) ----------
+from sklearn.impute import SimpleImputer
+
+# 1) Replace inf with NaN (just in case), on both splits
+X_train = X_train.replace([np.inf, -np.inf], np.nan)
+X_valid = X_valid.replace([np.inf, -np.inf], np.nan)
+
+# 2) Detect one-hot vs numeric
 one_hot_cols = [c for c in X_train.columns if c.startswith("species_")]
-# Numeric = all features minus one-hot
 numeric_cols = [c for c in X_train.columns if c not in one_hot_cols]
 
+# 3) Impute ONLY numeric columns (median is robust)
+num_imputer = SimpleImputer(strategy="median")
+X_train_num = pd.DataFrame(
+    num_imputer.fit_transform(X_train[numeric_cols]),
+    columns=numeric_cols, index=X_train.index
+)
+X_valid_num = pd.DataFrame(
+    num_imputer.transform(X_valid[numeric_cols]),
+    columns=numeric_cols, index=X_valid.index
+)
+
+# 4) Concatenate back numeric + one-hot
+X_train_oh = X_train[one_hot_cols].copy()
+X_valid_oh = X_valid[one_hot_cols].copy()
+
+X_train_imputed = pd.concat([X_train_num, X_train_oh], axis=1)
+X_valid_imputed = pd.concat([X_valid_num, X_valid_oh], axis=1)
+
+# 5) Scale numeric (after imputation). Do NOT scale one-hot.
 scaler = StandardScaler()
-X_train_scaled = X_train.copy()
-X_valid_scaled = X_valid.copy()
+X_train_imputed[numeric_cols] = scaler.fit_transform(X_train_imputed[numeric_cols])
+X_valid_imputed[numeric_cols] = scaler.transform(X_valid_imputed[numeric_cols])
 
-X_train_scaled[numeric_cols] = scaler.fit_transform(X_train[numeric_cols])
-X_valid_scaled[numeric_cols] = scaler.transform(X_valid[numeric_cols])
-
-# Convert to float32 for tf
-X_train_np = X_train_scaled.values.astype(np.float32)
-X_valid_np = X_valid_scaled.values.astype(np.float32)
+# 6) Final tensors
+X_train_np = X_train_imputed.values.astype(np.float32)
+X_valid_np = X_valid_imputed.values.astype(np.float32)
 y_train_np = y_train.values.astype(np.float32)
 y_valid_np = y_valid.values.astype(np.float32)
+
+# 7) Safety checks
+assert np.isfinite(X_train_np).all(), "Non-finite values in X_train_np"
+assert np.isfinite(X_valid_np).all(), "Non-finite values in X_valid_np"
+assert np.isfinite(y_train_np).all() and np.isfinite(y_valid_np).all(), "Non-finite values in y"
 
 # ---------- Build the MLP ----------
 def rmse_keras(y_true, y_pred):
