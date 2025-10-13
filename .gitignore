@@ -176,5 +176,9 @@ cython_debug/
 
 
 raw_data/
+.venv/
 
 
+.DS_Store
+raw_data_transformed/
+.venv_tf/
