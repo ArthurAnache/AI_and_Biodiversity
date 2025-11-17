@@ -1,7 +1,5 @@
 import argparse
-import os
 from typing import Tuple
-import json
 
 import numpy as np
 import pandas as pd
@@ -117,7 +115,7 @@ def build_pipeline(X: pd.DataFrame, hidden_layers: Tuple[int, ...], random_state
 
 
 def train_and_evaluate(X: pd.DataFrame, y: pd.Series, hidden_layers: Tuple[int, ...],
-                       test_size: float = 0.2, random_state: int = 42):
+                       test_size: float = 0.2, random_state: int = 42, max_iter: int = 200):
     """
     Splits data into train/test, fits the pipeline, and returns model and metrics.
     """
@@ -135,7 +133,7 @@ def train_and_evaluate(X: pd.DataFrame, y: pd.Series, hidden_layers: Tuple[int, 
     n_test = len(X_test)
     print(f"Split sizes -> train: {n_train} ({n_train / n_total:.1%}), test: {n_test} ({n_test / n_total:.1%})")
 
-    model = build_pipeline(Xp, hidden_layers=hidden_layers, random_state=random_state)
+    model = build_pipeline(Xp, hidden_layers=hidden_layers, random_state=random_state, max_iter=max_iter)
     model.fit(X_train, y_train)
 
     # Diagnostics: report one-hot encoded dimensions and category counts
@@ -169,30 +167,75 @@ def train_and_evaluate(X: pd.DataFrame, y: pd.Series, hidden_layers: Tuple[int, 
     }
 
 
-def predict_and_save(model: Pipeline, X: pd.DataFrame, output_csv: str, round_int: bool = True) -> None:
-    """
-    Runs prediction for all rows in X and writes a single-column CSV 'abondance_capped'.
-    If round_int is True, rounds to nearest non-negative integer (clip at 0).
-    """
-    preds = model.predict(X)
-    if round_int:
-        preds = np.maximum(np.rint(preds), 0).astype(int)
-
-    out_df = pd.DataFrame({'abondance_capped': preds})
-    os.makedirs(os.path.dirname(output_csv), exist_ok=True)
-    out_df.to_csv(output_csv, index=False, encoding='utf-8-sig')
+def predict_and_save(*args, **kwargs):
+    # Disabled: no file creation per user request.
+    raise RuntimeError("File saving disabled.")
 
 
-def save_predictions_with_index(indices: np.ndarray, preds: np.ndarray, output_csv: str, round_int: bool = True) -> None:
-    """
-    Save predictions with original row indices for alignment.
-    Columns: row_index, abondance_capped
-    """
-    if round_int:
-        preds = np.maximum(np.rint(preds), 0).astype(int)
-    out_df = pd.DataFrame({'row_index': indices, 'abondance_capped': preds})
-    os.makedirs(os.path.dirname(output_csv), exist_ok=True)
-    out_df.to_csv(output_csv, index=False, encoding='utf-8-sig')
+def save_predictions_with_index(*args, **kwargs):
+    # Disabled: no file creation per user request.
+    raise RuntimeError("File saving disabled.")
+
+
+def save_test_truth_vs_pred(*args, **kwargs):
+    # Disabled: no file creation per user request.
+    raise RuntimeError("File saving disabled.")
+
+
+def plot_pred_vs_true(y_true: np.ndarray, y_pred: np.ndarray) -> None:
+    plt.figure(figsize=(6, 6))
+    plt.scatter(y_true, y_pred, s=8, alpha=0.5)
+    lim_min = float(np.nanmin([y_true.min(), y_pred.min()]))
+    lim_max = float(np.nanmax([y_true.max(), y_pred.max()]))
+    plt.plot([lim_min, lim_max], [lim_min, lim_max], 'r--', linewidth=1)
+    plt.xlabel('True abundance')
+    plt.ylabel('Predicted abundance')
+    plt.title('Predicted vs True (test)')
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_residuals(y_true: np.ndarray, y_pred: np.ndarray) -> None:
+    residuals = y_pred - y_true
+    plt.figure(figsize=(7, 4))
+    plt.hist(residuals, bins=50, color='gray', alpha=0.8)
+    plt.axvline(0, color='red', linestyle='--', linewidth=1)
+    plt.xlabel('Residual (pred - true)')
+    plt.ylabel('Count')
+    plt.title('Residual distribution (test)')
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_tolerance_accuracy_curve(y_true: np.ndarray, y_pred: np.ndarray, tolerances: list[float], relative: bool = False) -> None:
+    y_true = np.asarray(y_true, dtype=float)
+    y_pred = np.asarray(y_pred, dtype=float)
+    abs_err = np.abs(y_pred - y_true)
+    if relative:
+        denom = np.maximum(np.abs(y_true), 1e-8)
+        rel_err = abs_err / denom
+        vals = []
+        for tol in tolerances:
+            acc = float(np.mean(rel_err <= tol))
+            vals.append(acc)
+        ylab = 'Accuracy within relative tol'
+        xlab = 'Relative tolerance (fraction)'
+    else:
+        vals = []
+        for tol in tolerances:
+            acc = float(np.mean(abs_err <= tol))
+            vals.append(acc)
+        ylab = 'Accuracy within absolute tol'
+        xlab = 'Absolute tolerance (counts)'
+    plt.figure(figsize=(6.5, 4.5))
+    plt.plot(tolerances, vals, marker='o')
+    plt.ylim(0, 1)
+    plt.xlabel(xlab)
+    plt.ylabel(ylab)
+    plt.title('Tolerance-based accuracy (test)')
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.show()
 
 
 def compute_species_pressions_influence(model: Pipeline, species_col: str = 'species', eps_scale: float = 0.5) -> pd.DataFrame:
@@ -284,24 +327,48 @@ def compute_species_pressions_influence(model: Pipeline, species_col: str = 'spe
     return infl_df
 
 
-def plot_influence_heatmap(infl_df: pd.DataFrame, out_png: str | None = None, title: str = 'Influence (dY/dX) by species x pressions') -> None:
-    if infl_df.empty:
-        print('Influence DataFrame is empty; skipping heatmap.')
-        return
-    vmax = float(np.nanmax(np.abs(infl_df.values)))
-    plt.figure(figsize=(max(8, infl_df.shape[1] * 0.4), max(6, infl_df.shape[0] * 0.3)))
-    plt.imshow(infl_df.values, aspect='auto', cmap='coolwarm', vmin=-vmax, vmax=vmax)
-    plt.colorbar(label='Approx. dY/dX')
-    plt.xticks(ticks=np.arange(infl_df.shape[1]), labels=infl_df.columns, rotation=45, ha='right')
-    plt.yticks(ticks=np.arange(infl_df.shape[0]), labels=infl_df.index)
-    plt.title(title)
+def plot_influence_heatmap_disabled():
+    # Disabled entirely per user request (heatmap not pertinent).
+    return
+
+def plot_top_feature_importance_rmse(model: Pipeline, X_test: pd.DataFrame, y_test: pd.Series, top_n: int = 10) -> pd.DataFrame:
+    """Compute permutation-based importance using RMSE increase and plot top N variables.
+
+    For each original column in X_test, permute its values, recompute RMSE.
+    Importance = permuted_rmse - baseline_rmse. Plot horizontal bar chart:
+    x-axis: permuted RMSE, y-axis: feature names (top N by importance).
+    Returns DataFrame of results for potential further inspection.
+    """
+    y_true = np.asarray(y_test, dtype=float)
+    baseline_pred = model.predict(X_test)
+    baseline_rmse = float(np.sqrt(np.mean((y_true - baseline_pred) ** 2)))
+
+    results = []
+    for col in X_test.columns:
+        X_perm = X_test.copy()
+        X_perm[col] = np.random.permutation(X_perm[col].values)
+        perm_pred = model.predict(X_perm)
+        perm_rmse = float(np.sqrt(np.mean((y_true - perm_pred) ** 2)))
+        results.append({
+            'feature': col,
+            'baseline_rmse': baseline_rmse,
+            'permuted_rmse': perm_rmse,
+            'rmse_increase': perm_rmse - baseline_rmse
+        })
+
+    res_df = pd.DataFrame(results).sort_values('rmse_increase', ascending=False)
+    top_df = res_df.head(top_n)
+
+    plt.figure(figsize=(8, max(4, top_n * 0.4)))
+    plt.barh(top_df['feature'][::-1], top_df['permuted_rmse'][::-1], color='steelblue')
+    plt.axvline(baseline_rmse, color='red', linestyle='--', linewidth=1, label=f'Baseline RMSE {baseline_rmse:.3f}')
+    plt.xlabel('RMSE (after permutation)')
+    plt.ylabel('Feature')
+    plt.title(f'Top {top_n} variables by RMSE impact (permutation)')
+    plt.legend()
     plt.tight_layout()
-    if out_png:
-        os.makedirs(os.path.dirname(out_png), exist_ok=True)
-        plt.savefig(out_png, dpi=150)
-        print(f'Heatmap saved to: {out_png}')
-    else:
-        plt.show()
+    plt.show()
+    return top_df
 
 
 def compute_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> dict:
@@ -314,6 +381,17 @@ def compute_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> dict:
     r2 = float(r2_score(y_true, y_pred))
     mae = float(mean_absolute_error(y_true, y_pred))
     return {"rmse": rmse, "r2": r2, "mae": mae}
+
+
+def accuracy_within_abs_tolerance(y_true: np.ndarray, y_pred: np.ndarray, abs_tol: float = 1.0) -> float:
+    """Fraction of predictions within an absolute error tolerance.
+
+    accuracy = mean(|y_pred - y_true| <= abs_tol)
+    """
+    y_true = np.asarray(y_true, dtype=float)
+    y_pred = np.asarray(y_pred, dtype=float)
+    acc = float(np.mean(np.abs(y_pred - y_true) <= float(abs_tol)))
+    return acc
 
 
 def evaluate_predictions_file(y_true_csv: str, y_pred_csv: str) -> dict:
@@ -338,6 +416,22 @@ def evaluate_predictions_file(y_true_csv: str, y_pred_csv: str) -> dict:
     return compute_metrics(y_true, y_pred)
 
 
+def plot_training_loss(model: Pipeline) -> None:
+    mlp = model.named_steps.get('mlp')
+    loss_curve = getattr(mlp, 'loss_curve_', None)
+    if loss_curve is None or len(loss_curve) == 0:
+        print('[Info] No loss_curve_ available to plot.')
+        return
+    plt.figure(figsize=(6.5, 4.5))
+    plt.plot(loss_curve, color='purple')
+    plt.xlabel('Iteration')
+    plt.ylabel('Training loss')
+    plt.title('MLP Training Loss')
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.show()
+
+
 def main():
     parser = argparse.ArgumentParser(description='Train a DNN to predict abundances from pressions.')
     parser.add_argument('--pressions', default='proc_data/pressions_petit.csv', help='Path to pressions CSV')
@@ -345,10 +439,11 @@ def main():
     parser.add_argument('--out', default='proc_data/abondances_petit_pred.csv', help='Output CSV path for predictions')
     parser.add_argument('--hidden', default='256,128,64', help='Hidden layer sizes, comma-separated')
     parser.add_argument('--test-size', type=float, default=0.2, help='Test size fraction for evaluation (e.g., 0.2 for 80/20)')
-    parser.add_argument('--max-iter', type=int, default=200, help='Max epochs for MLPRegressor')
+    parser.add_argument('--max-iter', type=int, default=1000, help='Max epochs for MLPRegressor (early stopping on)')
     parser.add_argument('--no-round', action='store_true', help='Do not round predictions to integers')
     parser.add_argument('--seed', type=int, default=42, help='Random seed')
     parser.add_argument('--metrics-out', default='', help='Optional path to write metrics JSON for predictions vs ground truth')
+    parser.add_argument('--acc-abs-tol', type=float, default=1.0, help='Absolute tolerance (in target units) for accuracy computation')
     parser.add_argument('--save-train-preds', action='store_true', help='Also save predictions for the training split')
 
     args = parser.parse_args()
@@ -361,46 +456,37 @@ def main():
 
     print('Training model...')
     model, metrics, splits = train_and_evaluate(
-        X, y, hidden_layers=hidden_tuple, test_size=args.test_size, random_state=args.seed
+        X, y, hidden_layers=hidden_tuple, test_size=args.test_size, random_state=args.seed, max_iter=args.max_iter
     )
-    print(f"Validation metrics: R2={metrics['r2']:.4f}, MAE={metrics['mae']:.4f}")
+    # Add RMSE and normalized RMSE metrics and print
+    y_true_test = np.asarray(splits['y_test'], dtype=float)
+    y_pred_test = np.asarray(splits['y_pred_test'], dtype=float)
+    rmse_val = float(np.sqrt(np.mean((y_true_test - y_pred_test) ** 2)))
+    mean_y = float(np.mean(y_true_test))
+    std_y = float(np.std(y_true_test))
+    nrmse_mean = float(rmse_val / (abs(mean_y) if abs(mean_y) > 1e-12 else 1e-12))
+    nrmse_std = float(rmse_val / (std_y if std_y > 1e-12 else 1e-12))
+    print(f"Validation metrics: RMSE={rmse_val:.4f}, R2={metrics['r2']:.4f}, MAE={metrics['mae']:.4f}")
+    print(f"Normalized RMSE -> by mean: {nrmse_mean:.4f}, by std: {nrmse_std:.4f}")
 
-    # Compute and save influence matrix (species x pressions)
-    try:
-        infl_df = compute_species_pressions_influence(model, species_col='species', eps_scale=0.5)
-        os.makedirs('proc_data', exist_ok=True)
-        infl_csv = os.path.join('proc_data', 'species_pressions_influence.csv')
-        infl_df.to_csv(infl_csv, encoding='utf-8-sig')
-        print(f'Influence matrix written to: {infl_csv}')
-        # Plot heatmap
-        out_png = os.path.join('figures', 'species_pressions_influence_heatmap.png')
-        plot_influence_heatmap(infl_df, out_png=out_png)
-    except (ValueError, KeyError, AttributeError) as e:
-        print(f'[Warn] Could not compute influence heatmap: {e}')
+    # Plot training loss curve to visualize early stopping behavior
+    plot_training_loss(model)
 
-    # Avoid accidental overwrite of ground-truth file unless explicitly requested
-    if os.path.abspath(args.out) == os.path.abspath(args.abundances):
-        print('[Warning] Output path equals ground-truth file. Changing to abondances_petit_pred_test.csv to avoid overwrite.')
-        out_test = os.path.join(os.path.dirname(args.out), 'abondances_petit_pred_test.csv')
-    else:
-        out_test = args.out
+    # Skip pred-vs-true and residuals plots per request
 
-    # Save predictions for test split with original row indices
-    print(f"Writing test predictions to: {out_test}")
-    save_predictions_with_index(splits['idx_test'], splits['y_pred_test'], out_test, round_int=(not args.no_round))
+    # Print accuracy within absolute tolerance (no plotting)
+    acc = accuracy_within_abs_tolerance(splits['y_test'], splits['y_pred_test'], abs_tol=args.acc_abs_tol)
+    print(f"Accuracy@±{args.acc_abs_tol:g}: {acc:.4f}")
 
-    # Optionally also save train predictions
-    if args.save_train_preds:
-        y_pred_train = model.predict(splits['X_train'])
-        out_train = os.path.join(os.path.dirname(out_test), 'abondances_petit_pred_train.csv')
-        print(f"Writing train predictions to: {out_train}")
-        save_predictions_with_index(splits['idx_train'], y_pred_train, out_train, round_int=(not args.no_round))
+    # Compute and plot permutation importance histogram (top 10)
+    print("Computing permutation importance (RMSE impact)...")
+    top_imp = plot_top_feature_importance_rmse(model, splits['X_test'], splits['y_test'], top_n=10)
+    print("Top 10 features by RMSE increase:")
+    print(top_imp[['feature', 'rmse_increase']].to_string(index=False))
 
-    # Optionally write metrics JSON (from validation metrics)
+    # Optional metrics JSON disabled (no file creation)
     if args.metrics_out:
-        with open(args.metrics_out, 'w', encoding='utf-8') as f:
-            json.dump(metrics, f, ensure_ascii=False, indent=2)
-        print(f"Validation metrics written to: {args.metrics_out}")
+        print("[Info] metrics_out ignored (file creation disabled).")
 
     print('Done.')
 
