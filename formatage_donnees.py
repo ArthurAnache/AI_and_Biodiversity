@@ -40,5 +40,5 @@ abondance = df_merged[['abondance_capped']]
 pression = df_merged.drop(columns=['abondance_capped'])
 
 # Exporter les deux DataFrames dans le dossier raw_data
-abondance.to_csv('raw_data/abondances_petit.csv', index=False)
-pression.to_csv('raw_data/pressions_petit.csv', index=False)
+abondance.to_csv('proc_data/abondances_petit.csv', index=False)
+pression.to_csv('proc_data/pressions_petit.csv', index=False)
