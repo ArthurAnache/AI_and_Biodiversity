@@ -121,7 +121,7 @@ params = {
     "seed": 42
 }
 #params["objective"] = "reg:pseudohubererror" # Pseudo-Huber
-params["objective"] = "reg:absoluteerror"  # MAE
+#params["objective"] = "reg:absoluteerror"  # MAE
 
 booster = xgb.train(
     params=params,
@@ -181,3 +181,6 @@ imp_series = pd.Series({f: imp_dict.get(f, 0.0) for f in feat_names}).sort_value
 
 print(f"\n===== TOP 20 FEATURES ({importance_type}) =====")
 print(imp_series.head(20))
+
+
+# Faire la moyenne annuelle des features mensuelles pour verif
