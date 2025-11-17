@@ -2,8 +2,10 @@ import pandas as pd
 import numpy as np
 
 # Chargement des données
-df = pd.read_csv('raw_data/STOC_pressions_bio_assol_meteo_pesti_routes_lum_120625.csv', encoding='latin1')
-
+df = pd.read_csv(
+    "/Users/louis/Desktop/Tronc commun 2A/Projet S7/AI_and_Biodiversity/raw_data/STOC_pressions_bio_assol_meteo_pesti_routes_lum_120625.csv",
+    sep=";", encoding="latin1", low_memory=False
+)
 # On ne garde que les colonnes qui nous intéressent
 colonnes_a_garder = [f'Temps_mean_mensu_grid_{i}' for i in range(1, 13)] + [f'Precipitation_mean_mensu_grid_{i}' for i in range(1, 13)] + ['Year', 'abondance_capped', 'ValueSPred_Urba', 'ValueSPred_For', 'ValueSPred_CC', 'ValueSPred_M', 'ValueSPred_ZH', 'mean_concentration_air_grid_sum', 'mean_tii_grid_sum', 'mean_tii_scale_grid_sum', 'mean_concentration_water_grid_sum', 'all_pesticide_exposure_grid_sum', 'SurfBio_cell', 'nb_exp_cell', 'Long_route', 'nb_roads', 'Lum_mean', 'site', 'species']
 df = df[colonnes_a_garder]
