@@ -1,0 +1,4 @@
+python species_clustering.py --n-clusters 3
+python species_evolution_model.py --cluster 0 --eval-species STUVUL
+python species_clustering.py --n-clusters 3
+python .\simulate_future.py --mode all --n-lags 2 --proc-data proc_data/data_proc_pressures_lag2.csv --debug

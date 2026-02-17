@@ -182,3 +182,4 @@ raw_data/
 .DS_Store
 raw_data_transformed/
 .venv_tf/
+proc_data/

@@ -331,21 +331,37 @@ def plot_influence_heatmap_disabled():
     # Disabled entirely per user request (heatmap not pertinent).
     return
 
-def plot_top_feature_importance_rmse(model: Pipeline, X_test: pd.DataFrame, y_test: pd.Series, top_n: int = 10) -> pd.DataFrame:
+def plot_top_feature_importance_rmse(model: Pipeline, X_test: pd.DataFrame, y_test: pd.Series, top_n: int = 10, species_filter: str = None, species_col: str = 'species') -> pd.DataFrame:
     """Compute permutation-based importance using RMSE increase and plot top N variables.
 
     For each original column in X_test, permute its values, recompute RMSE.
     Importance = permuted_rmse - baseline_rmse. Plot horizontal bar chart:
     x-axis: permuted RMSE, y-axis: feature names (top N by importance).
     Returns DataFrame of results for potential further inspection.
+    If species_filter is provided, restrict evaluation to that species subset.
     """
-    y_true = np.asarray(y_test, dtype=float)
-    baseline_pred = model.predict(X_test)
+    X_eval = X_test.copy()
+    y_eval = y_test.copy()
+
+    if species_filter:
+        if species_col not in X_eval.columns:
+            print(f"Warning: Species column '{species_col}' not found. Ignoring filter.")
+        else:
+            mask = X_eval[species_col] == species_filter
+            X_eval = X_eval[mask]
+            y_eval = y_eval[mask]
+            print(f"Filtered for species='{species_filter}': {len(X_eval)} samples remaining.")
+            if len(X_eval) == 0:
+                print("No samples found for this species. Skipping importance plot.")
+                return pd.DataFrame()
+
+    y_true = np.asarray(y_eval, dtype=float)
+    baseline_pred = model.predict(X_eval)
     baseline_rmse = float(np.sqrt(np.mean((y_true - baseline_pred) ** 2)))
 
     results = []
-    for col in X_test.columns:
-        X_perm = X_test.copy()
+    for col in X_eval.columns:
+        X_perm = X_eval.copy()
         X_perm[col] = np.random.permutation(X_perm[col].values)
         perm_pred = model.predict(X_perm)
         perm_rmse = float(np.sqrt(np.mean((y_true - perm_pred) ** 2)))
@@ -364,7 +380,10 @@ def plot_top_feature_importance_rmse(model: Pipeline, X_test: pd.DataFrame, y_te
     plt.axvline(baseline_rmse, color='red', linestyle='--', linewidth=1, label=f'Baseline RMSE {baseline_rmse:.3f}')
     plt.xlabel('RMSE (after permutation)')
     plt.ylabel('Feature')
-    plt.title(f'Top {top_n} variables by RMSE impact (permutation)')
+    title = f'Top {top_n} variables by RMSE impact (permutation)'
+    if species_filter:
+        title += f' (Species: {species_filter})'
+    plt.title(title)
     plt.legend()
     plt.tight_layout()
     plt.show()
@@ -445,6 +464,7 @@ def main():
     parser.add_argument('--metrics-out', default='', help='Optional path to write metrics JSON for predictions vs ground truth')
     parser.add_argument('--acc-abs-tol', type=float, default=1.0, help='Absolute tolerance (in target units) for accuracy computation')
     parser.add_argument('--save-train-preds', action='store_true', help='Also save predictions for the training split')
+    parser.add_argument('--species', type=str, default=None, help='Compute feature importance for a specific species only')
 
     args = parser.parse_args()
 
@@ -480,9 +500,10 @@ def main():
 
     # Compute and plot permutation importance histogram (top 10)
     print("Computing permutation importance (RMSE impact)...")
-    top_imp = plot_top_feature_importance_rmse(model, splits['X_test'], splits['y_test'], top_n=10)
-    print("Top 10 features by RMSE increase:")
-    print(top_imp[['feature', 'rmse_increase']].to_string(index=False))
+    top_imp = plot_top_feature_importance_rmse(model, splits['X_test'], splits['y_test'], top_n=10, species_filter=args.species)
+    if not top_imp.empty:
+        print("Top 10 features by RMSE increase:")
+        print(top_imp[['feature', 'rmse_increase']].to_string(index=False))
 
     # Optional metrics JSON disabled (no file creation)
     if args.metrics_out:

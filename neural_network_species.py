@@ -10,6 +10,7 @@ from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
 from sklearn.metrics import r2_score, mean_absolute_error
+from sklearn.inspection import PartialDependenceDisplay
 
 
 def load_data(pressions_path: str, abundances_path: str) -> Tuple[pd.DataFrame, pd.Series]:
@@ -167,6 +168,37 @@ def accuracy_within_abs_tolerance(y_true: np.ndarray, y_pred: np.ndarray, abs_to
     return float(np.mean(np.abs(y_pred - y_true) <= float(abs_tol)))
 
 
+def plot_partial_dependence(model: Pipeline, X: pd.DataFrame, features: list, species_name: str):
+    """
+    Plots Partial Dependence for the specified features.
+    This shows the marginal effect of each feature on the predicted abundance.
+    """
+    print(f"Generating Partial Dependence Plots for top {len(features)} features...")
+    
+    # Convert integer columns to float to avoid sklearn future warning
+    X_eval = X.copy()
+    for col in X_eval.select_dtypes(include=['int', 'int32', 'int64']).columns:
+        X_eval[col] = X_eval[col].astype(float)
+    
+    # Laisser scikit-learn gérer la grille d'axes automatiquement
+    disp = PartialDependenceDisplay.from_estimator(
+        model,
+        X_eval,
+        features,
+        kind="average",
+        n_jobs=-1,
+        grid_resolution=30,
+    )
+
+    plt.suptitle(
+        f"Partial Dependence of Abundance for {species_name}\n(Marginal Effect of Top Pressures)",
+        fontsize=16,
+        y=1.02,
+    )
+    plt.tight_layout()
+    plt.show()
+
+
 def main():
     parser = argparse.ArgumentParser(description='Train MLP on a specific species subset.', epilog=essentials_desc)
     parser.add_argument('--pressions', default='proc_data/pressions_petit.csv', help='Path to pressions CSV')
@@ -214,6 +246,11 @@ def main():
     top_imp = plot_top_feature_importance_rmse(model, splits['X_test'], splits['y_test'], top_n=10)
     print("Top 10 features by RMSE increase (subset):")
     print(top_imp[['feature', 'rmse_increase']].to_string(index=False))
+
+    # Plot Partial Dependence for the top 6 features
+    # This answers "HOW" the features affect the abundance (direction/shape)
+    top_features_list = top_imp['feature'].head(6).tolist()
+    plot_partial_dependence(model, splits['X_test'], top_features_list, args.species)
 
 
 if __name__ == '__main__':

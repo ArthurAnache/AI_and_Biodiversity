@@ -1,0 +1,14 @@
+Critique de la comparaison
+==========================
+
+Nombre d'espèces : 36
+Moyenne Global (XGB) : -0.1899
+Moyenne Cluster (XGB) : -0.1512
+
+Top Gains (Cluster vs Global XGB):
+type species  Cluster (XGB)  Global (XGB)  Diff_XGB
+31    SYLATR      -0.449095     -0.756532  0.307437
+2     APUAPU       0.229846     -0.042386  0.272232
+21    PARMAJ      -0.284669     -0.482855  0.198186
+33    TURMER      -0.331167     -0.523549  0.192382
+17    LUSMEG      -0.084168     -0.252679  0.168511

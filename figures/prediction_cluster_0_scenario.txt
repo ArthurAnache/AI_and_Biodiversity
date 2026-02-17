@@ -1,0 +1,8 @@
+Scenario (appliqué chaque année sur les variables de pression courantes, pas sur les lags):
+- Pesticides: colonnes contenant 'all_pesticide_exposure' -> * 0.15 (baisse drastique)
+- Bio: colonnes contenant 'SurfBio_cell' -> * 4.0 (explosion du bio)
+- Lumière: colonnes contenant 'Lum_' -> * 0.4 (sobriété nocturne)
+- Urbain: colonnes contenant 'Area_grid_tot_Urba' ou 'ValueSPred_Urba' -> * 0.95 (renaturation)
+- Forêt: colonnes contenant 'Area_grid_tot_For' ou 'ValueSPred_For' -> * 1.15 (puits de carbone)
+- Cultures: colonnes contenant 'Area_grid_tot_CC' ou 'ValueSPred_CC' -> * 0.85 (moins d'élevage/cultures)
+- Température: colonnes contenant 'Temps_' ou 'Temps_mean' -> + 1.2 (°C additionnels)
