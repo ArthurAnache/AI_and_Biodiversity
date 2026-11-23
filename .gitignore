@@ -182,3 +182,8 @@ raw_data/
 .DS_Store
 raw_data_transformed/
 .venv_tf/
+
+# Gros fichier de données (368 Mo)
+CHIRO_*.csv
+proc_data/
+sample_data/sample.csv
