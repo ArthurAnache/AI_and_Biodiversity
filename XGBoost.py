@@ -96,7 +96,7 @@ resultats = pd.DataFrame({
 })
 
 pd.set_option('display.max_rows', None)
-print(resultats)
+print(resultats.head(20))
 '''
 rmse = np.sqrt(mean_squared_error(y_test, y_pred))
 print("RMSE :", rmse)
@@ -156,7 +156,7 @@ feature_importance = pd.DataFrame({
     'Importance': importance
 }).sort_values(by='Importance', ascending=False)
 
-print(feature_importance)
+print(feature_importance.head(30))
 # Importance globale de l'espèce
 esp_importance = feature_importance[feature_importance['Feature'].isin(species_cols)]['Importance'].sum()
 
