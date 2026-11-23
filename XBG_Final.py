@@ -4,7 +4,7 @@
 import numpy as np
 import pandas as pd
 from xgboost import XGBRegressor
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import GroupShuffleSplit
 from sklearn.metrics import r2_score
 import warnings
 warnings.filterwarnings("ignore")
@@ -15,24 +15,18 @@ warnings.filterwarnings("ignore")
 path = "raw_data/STOC_pressions_bio_assol_meteo_pesti_routes_lum_120625.csv"
 df_full = pd.read_csv(path, sep=";", encoding="latin1", low_memory=False)
 
-print(df_full.columns.tolist())
-
 # =========================
-# 3. TRI TEMPOREL (INDISPENSABLE)
-# =========================
-df = df_full.sort_values(["id_cell", "Year"]).copy()
-
-# =========================
-# 4. VARIABLES CLIMATIQUES ANNUELLES
+# 3. VARIABLES CLIMATIQUES ANNUELLES
 # =========================
 temps_cols = [f"Temps_mean_mensu_grid_{i}" for i in range(1, 13)]
 prec_cols  = [f"Precipitation_mean_mensu_grid_{i}" for i in range(1, 13)]
 
-df["Temps_mean_AllY"] = df[temps_cols].mean(axis=1, skipna=True)
-df["Precipitation_mean_AllY"] = df[prec_cols].mean(axis=1, skipna=True)
+df = df_full.copy()
+df["Temps_mean_AllY"] = df[temps_cols].apply(pd.to_numeric, errors="coerce").mean(axis=1)
+df["Precipitation_mean_AllY"] = df[prec_cols].apply(pd.to_numeric, errors="coerce").mean(axis=1)
 
 # =========================
-# 5. PRESSIONS EXPLICATIVES (SANS URBANISATION)
+# 4. PRESSIONS EXPLICATIVES (SANS URBANISATION)
 # =========================
 base_pressures = [
     "ValueSPred_For",
@@ -47,46 +41,66 @@ base_pressures = [
     "Temps_mean_AllY",
     "Precipitation_mean_AllY"
 ]
-
-# =========================
-# 6. CRÉATION DES LAGS t-1 UNIQUEMENT
-# =========================
-for col in base_pressures:
-    df[f"{col}_t-1"] = df.groupby("id_cell")[col].shift(1)
-
-# =========================
-# 7. DATASET FINAL
-# =========================
 target = "ValueSPred_Urba"
+
+for col in base_pressures + [target]:
+    df[col] = pd.to_numeric(df[col], errors="coerce")
+
+# =========================
+# 5. UNE LIGNE PAR (CELLULE, ANNÉE)
+# =========================
+# Le fichier contient ~30 lignes par cellule et par année (une par espèce).
+# Les pressions sont identiques pour toutes ces lignes : on les regroupe,
+# sinon le modèle voit des doublons à la fois en train et en test.
+df_cell = (
+    df.groupby(["id_cell", "Year"])[base_pressures + [target]]
+      .mean()
+      .reset_index()
+)
+
+# =========================
+# 6. LAGS t-1 (VRAIE ANNÉE PRÉCÉDENTE)
+# =========================
+# On décale l'année de +1 puis on fusionne : la valeur de l'année N-1
+# est associée à l'année N. Si l'année N-1 manque, la ligne disparaît.
+df_prev = df_cell[["id_cell", "Year"] + base_pressures].copy()
+df_prev["Year"] = df_prev["Year"] + 1
+df_prev = df_prev.rename(columns={col: f"{col}_t-1" for col in base_pressures})
 
 features = [f"{col}_t-1" for col in base_pressures]
 
-df_model = df[features + [target]].copy()
-
-# Conversion numérique
-for col in df_model.columns:
-    df_model[col] = pd.to_numeric(df_model[col], errors="coerce")
-
-# Suppression des lignes sans lag
-df_model = df_model.dropna()
-
-X = df_model[features]
-y = df_model[target]
+df_model = df_cell[["id_cell", "Year", target]].merge(
+    df_prev, on=["id_cell", "Year"], how="inner"
+)
 
 print("=" * 70)
 print("XGBoost – Urbanisation(t) ~ Pressions(t-1)")
 print("=" * 70)
-print(f"Nombre d'observations finales : {len(df_model)}")
+print(f"Couples (cellule, année) avec année précédente dispo : {len(df_model)}")
+
+# Valeurs manquantes par variable (pour repérer celles qui suppriment des lignes)
+print("\nValeurs manquantes par variable :")
+print(df_model[features + [target]].isna().sum().sort_values(ascending=False).to_string())
+
+df_model = df_model.dropna()
+print(f"\nNombre d'observations finales (après dropna) : {len(df_model)}")
+print(f"Nombre de cellules : {df_model['id_cell'].nunique()}")
+
+X = df_model[features]
+y = df_model[target]
+groups = df_model["id_cell"]
 
 # =========================
-# 8. SPLIT TRAIN / TEST (ALÉATOIRE, COMME AVANT)
+# 7. SPLIT TRAIN / TEST PAR CELLULE
 # =========================
-X_tr, X_te, y_tr, y_te = train_test_split(
-    X, y, test_size=0.2, random_state=42
-)
+# Les cellules du test ne sont jamais vues à l'entraînement.
+splitter = GroupShuffleSplit(n_splits=1, test_size=0.2, random_state=42)
+idx_tr, idx_te = next(splitter.split(X, y, groups=groups))
+X_tr, X_te = X.iloc[idx_tr], X.iloc[idx_te]
+y_tr, y_te = y.iloc[idx_tr], y.iloc[idx_te]
 
 # =========================
-# 9. MODÈLE XGBOOST
+# 8. MODÈLE XGBOOST
 # =========================
 model = XGBRegressor(
     n_estimators=300,
@@ -106,7 +120,7 @@ model = XGBRegressor(
 model.fit(X_tr, y_tr)
 
 # =========================
-# 10. ÉVALUATION
+# 9. ÉVALUATION
 # =========================
 r2_train = r2_score(y_tr, model.predict(X_tr))
 r2_test  = r2_score(y_te, model.predict(X_te))
